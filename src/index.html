@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student Management System</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.9/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const apiBaseUrl = 'http://127.0.0.1:8000/api';
+
+    // Student Form Component
+    function StudentForm({ onAddStudent }) {
+      const [firstName, setFirstName] = useState('');
+      const [lastName, setLastName] = useState('');
+      const [email, setEmail] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await fetch(`${apiBaseUrl}/students`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ first_name: firstName, last_name: lastName, email }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          setFirstName('');
+          setLastName('');
+          setEmail('');
+          onAddStudent();
+        } catch (err) {
+          console.error('Error adding student:', err);
+          alert('Failed to add student: ' + err.message);
+        }
+      };
+
+      return (
+        <div className="bg-white shadow-md rounded-lg mb-6">
+          <div className="bg-gray-100 px-4 py-2 rounded-t-lg">
+            <h3 className="text-lg font-semibold">Manage Student Profile</h3>
+          </div>
+          <div className="p-4">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <input
+                type="text"
+                className="border rounded px-3 py-2"
+                placeholder="First Name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
+              <input
+                type="text"
+                className="border rounded px-3 py-2"
+                placeholder="Last Name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
+              <input
+                type="email"
+                className="border rounded px-3 py-2"
+                placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <button
+                type="submit"
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+              >
+                Add Student
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Grades Modal Component (Add/Edit)
+    function GradesModal({ studentId, mode, grades, onSave, onClose, onDeleteGrade }) {
+      const [selectedGradeId, setSelectedGradeId] = useState(grades.length > 0 ? grades[0].id : '');
+      const [subjectName, setSubjectName] = useState('');
+      const [activityGrade, setActivityGrade] = useState('');
+      const [quizGrade, setQuizGrade] = useState('');
+      const [examGrade, setExamGrade] = useState('');
+
+      useEffect(() => {
+        if (mode === 'edit' && grades.length > 0) {
+          const grade = grades.find(g => g.id === selectedGradeId) || grades[0];
+          setSelectedGradeId(grade.id);
+          setSubjectName(grade.subject.subject_name);
+          setActivityGrade(grade.activity_grade.toString());
+          setQuizGrade(grade.quiz_grade.toString());
+          setExamGrade(grade.exam_grade.toString());
+        } else {
+          setSubjectName('');
+          setActivityGrade('');
+          setQuizGrade('');
+          setExamGrade('');
+        }
+      }, [selectedGradeId, mode, grades]);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          let subjectId;
+          if (mode === 'add' || !selectedGradeId) {
+            const subjectRes = await fetch(`${apiBaseUrl}/subjects`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ subject_name: subjectName }),
+            });
+            if (!subjectRes.ok) throw new Error(await subjectRes.text());
+            const subjectData = await subjectRes.json();
+            subjectId = subjectData.id;
+          } else {
+            const grade = grades.find(g => g.id === selectedGradeId);
+            subjectId = grade.subject_id;
+          }
+
+          const payload = {
+            student_id: studentId,
+            subject_id: subjectId,
+            activity_grade: parseFloat(activityGrade),
+            quiz_grade: parseFloat(quizGrade),
+            exam_grade: parseFloat(examGrade),
+          };
+
+          let res;
+          if (mode === 'edit' && selectedGradeId) {
+            res = await fetch(`${apiBaseUrl}/grades/${selectedGradeId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          } else {
+            res = await fetch(`${apiBaseUrl}/grades`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          }
+
+          if (!res.ok) throw new Error(await res.text());
+          setSubjectName('');
+          setActivityGrade('');
+          setQuizGrade('');
+          setExamGrade('');
+          onSave();
+          onClose();
+        } catch (err) {
+          console.error('Error saving grades:', err);
+          alert(`Failed to ${mode} grade: ${err.message}`);
+        }
+      };
+
+      const handleDelete = async () => {
+        if (!selectedGradeId) return;
+        if (!window.confirm('Are you sure you want to delete this grade?')) return;
+        const res = await fetch(`${apiBaseUrl}/grades/${selectedGradeId}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          onDeleteGrade(selectedGradeId);
+          setSelectedGradeId(grades.length > 1 ? grades[1].id : '');
+          setSubjectName('');
+          setActivityGrade('');
+          setQuizGrade('');
+          setExamGrade('');
+          onSave();
+          onClose();
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">{mode === 'edit' ? 'Edit Grade' : 'Add Grade'}</h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <input type="hidden" value={studentId} />
+              {mode === 'edit' && grades.length > 0 && (
+                <div className="mb-4">
+                  <select
+                    className="border rounded w-full px-3 py-2"
+                    value={selectedGradeId}
+                    onChange={(e) => setSelectedGradeId(e.target.value)}
+                    required
+                  >
+                    {grades.map((grade) => (
+                      <option key={grade.id} value={grade.id}>
+                        {grade.subject.subject_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="mb-4">
+                <input
+                  type="text"
+                  className="border rounded w-full px-3 py-2"
+                  placeholder="Enter Subject Name"
+                  value={subjectName}
+                  onChange={(e) => setSubjectName(e.target.value)}
+                  required
+                  disabled={mode === 'edit'}
+                />
+              </div>
+              <div className="mb-4">
+                <input
+                  type="number"
+                  className="border rounded w-full px-3 py-2"
+                  placeholder="Activity Grade"
+                  value={activityGrade}
+                  onChange={(e) => setActivityGrade(e.target.value)}
+                  min="0"
+                  max="100"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <input
+                  type="number"
+                  className="border rounded w-full px-3 py-2"
+                  placeholder="Quiz Grade"
+                  value={quizGrade}
+                  onChange={(e) => setQuizGrade(e.target.value)}
+                  min="0"
+                  max="100"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <input
+                  type="number"
+                  className="border rounded w-full px-3 py-2"
+                  placeholder="Exam Grade"
+                  value={examGrade}
+                  onChange={(e) => setExamGrade(e.target.value)}
+                  min="0"
+                  max="100"
+                  required
+                />
+              </div>
+              <div className="flex justify-between">
+                <button
+                  type="submit"
+                  className="bg-green-500 text-white px-4 py-2 rounded w-5/12 hover:bg-green-600"
+                >
+                  {mode === 'edit' ? 'Update Grade' : 'Add Grade'}
+                </button>
+                {mode === 'edit' && grades.length > 0 && (
+                  <button
+                    type="button"
+                    className="bg-red-500 text-white px-4 py-2 rounded w-5/12 hover:bg-red-600"
+                    onClick={handleDelete}
+                  >
+                    Delete Grade
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Profile Modal Component
+    function ProfileModal({ student, onSave, onClose }) {
+      const [firstName, setFirstName] = useState(student.first_name);
+      const [lastName, setLastName] = useState(student.last_name);
+      const [email, setEmail] = useState(student.email);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await fetch(`${apiBaseUrl}/students/${student.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ first_name: firstName, last_name: lastName, email }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          onSave();
+          onClose();
+        } catch (err) {
+          console.error('Error updating profile:', err);
+          alert('Failed to update profile: ' + err.message);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Edit Profile</h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <input
+                  type="text"
+                  className="border rounded w-full px-3 py-2"
+                  placeholder="First Name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <input
+                  type="text"
+                  className="border rounded w-full px-3 py-2"
+                  placeholder="Last Name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <input
+                  type="email"
+                  className="border rounded w-full px-3 py-2"
+                  placeholder="Email Address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className="bg-green-500 text-white px-4 py-2 rounded w-full hover:bg-green-600"
+              >
+                Update Profile
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Grades Popup Component
+    function GradesPopup({ student, grades, onClose }) {
+      if (!grades || grades.length === 0) {
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md text-center">
+              <h3 className="text-lg font-semibold mb-4">No Grades Available</h3>
+              <button
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                onClick={onClose}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Grades for {student.first_name} {student.last_name}</h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+                ×
+              </button>
+            </div>
+            <div className="space-y-4">
+              {grades.map((grade, index) => (
+                <div key={index} className="p-2 border rounded">
+                  <p className="font-semibold">Subject {index + 1}: {grade.subject.subject_name}</p>
+                  <p>Activity: {grade.activity_grade}</p>
+                  <p>Quiz: {grade.quiz_grade}</p>
+                  <p>Exam: {grade.exam_grade}</p>
+                </div>
+              ))}
+            </div>
+            <button
+              className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+              onClick={onClose}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Student List Component
+    function StudentList({ students, onDelete, onOpenGradesModal, onViewGrades, onEditProfile }) {
+      return (
+        <div className="bg-white shadow-md rounded-lg">
+          <div className="bg-gray-100 px-4 py-2 rounded-t-lg">
+            <h3 className="text-lg font-semibold">Student List & Subjects</h3>
+          </div>
+          <div className="p-4">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="border p-2">Student ID</th>
+                  <th className="border p-2">Name</th>
+                  <th className="border p-2">Email</th>
+                  <th className="border p-2">Subjects</th>
+                  <th className="border p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="text-center p-4">
+                      No students found
+                    </td>
+                  </tr>
+                ) : (
+                  students.map((student) => (
+                    <tr key={student.id}>
+                      <td className="border p-2">{student.id}</td>
+                      <td className="border p-2">{`${student.first_name} ${student.last_name}`}</td>
+                      <td className="border p-2">{student.email}</td>
+                      <td className="border p-2">
+                        {student.subjects?.join(', ') || 'None'}
+                      </td>
+                      <td className="border p-2">
+                        <button
+                          className="bg-yellow-500 text-white px-2 py-1 rounded mr-1 hover:bg-yellow-600"
+                          onClick={() => onOpenGradesModal(student.id, 'add')}
+                        >
+                          Add Grade
+                        </button>
+                        <button
+                          className="bg-purple-500 text-white px-2 py-1 rounded mr-1 hover:bg-purple-600"
+                          onClick={() => onOpenGradesModal(student.id, 'edit')}
+                        >
+                          Edit Grades
+                        </button>
+                        <button
+                          className="bg-blue-500 text-white px-2 py-1 rounded mr-1 hover:bg-blue-600"
+                          onClick={() => onViewGrades(student)}
+                        >
+                          View Grades
+                        </button>
+                        <button
+                          className="bg-green-500 text-white px-2 py-1 rounded mr-1 hover:bg-green-600"
+                          onClick={() => onEditProfile(student)}
+                        >
+                          Edit Profile
+                        </button>
+                        <button
+                          className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
+                          onClick={() => onDelete(student.id)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // Main App Component
+    function App() {
+      const [students, setStudents] = useState([]);
+      const [subjects, setSubjects] = useState([]);
+      const [modalStudentId, setModalStudentId] = useState(null);
+      const [profileStudent, setProfileStudent] = useState(null);
+      const [popupStudent, setPopupStudent] = useState(null);
+      const [grades, setGrades] = useState([]);
+
+      useEffect(() => {
+        const loadData = async () => {
+          try {
+            const studentsRes = await fetch(`${apiBaseUrl}/students`);
+            if (!studentsRes.ok) throw new Error(await res.text());
+            const studentsData = await studentsRes.json();
+            const studentsWithSubjects = await Promise.all(
+              studentsData.map(async (student) => {
+                const gradesRes = await fetch(`${apiBaseUrl}/grades?student_id=${student.id}`);
+                if (!gradesRes.ok) throw new Error(await res.text());
+                const gradesData = await gradesRes.json();
+                return {
+                  ...student,
+                  subjects: gradesData.map((grade) => grade.subject.subject_name),
+                };
+              })
+            );
+            setStudents(studentsWithSubjects);
+
+            const subjectsRes = await fetch(`${apiBaseUrl}/subjects`);
+            if (!subjectsRes.ok) throw new Error(await res.text());
+            const subjectsData = await subjectsRes.json();
+            setSubjects(subjectsData);
+          } catch (err) {
+            console.error('Error loading data:', err);
+            alert('Failed to load data: ' + err.message);
+          }
+        };
+        loadData();
+      }, []);
+
+      const handleAddStudent = () => {
+        const loadStudents = async () => {
+          try {
+            const res = await fetch(`${apiBaseUrl}/students`);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            const studentsWithSubjects = await Promise.all(
+              data.map(async (student) => {
+                const gradesRes = await fetch(`${apiBaseUrl}/grades?student_id=${student.id}`);
+                if (!gradesRes.ok) throw new Error(await res.text());
+                const gradesData = await gradesRes.json();
+                return {
+                  ...student,
+                  subjects: gradesData.map((grade) => grade.subject.subject_name),
+                };
+              })
+            );
+            setStudents(studentsWithSubjects);
+          } catch (err) {
+            console.error('Error reloading students:', err);
+            alert('Failed to reload students: ' + err.message);
+          }
+        };
+        loadStudents();
+      };
+
+      const handleDelete = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this student?')) return;
+        try {
+          const res = await fetch(`${apiBaseUrl}/students/${id}`, {
+            method: 'DELETE',
+          });
+          if (!res.ok) throw new Error(await res.text());
+          setStudents(students.filter((student) => student.id !== id));
+        } catch (err) {
+          console.error('Error deleting student:', err);
+          alert('Failed to delete student: ' + err.message);
+        }
+      };
+
+      const handleOpenGradesModal = async (id, mode) => {
+        if (mode === 'edit') {
+          try {
+            const res = await fetch(`${apiBaseUrl}/grades?student_id=${id}`);
+            if (!res.ok) throw new Error(await res.text());
+            const gradesData = await res.json();
+            if (gradesData.length > 0) {
+              setGrades(gradesData);
+            } else {
+              alert('No grades to edit for this student.');
+              return;
+            }
+          } catch (err) {
+            console.error('Error fetching grades:', err);
+            alert('Failed to load grades: ' + err.message);
+            return;
+          }
+        } else {
+          setGrades([]);
+        }
+        setModalStudentId(id);
+      };
+
+      const handleCloseGradesModal = () => {
+        setModalStudentId(null);
+        setGrades([]);
+      };
+
+      const handleSaveGrades = () => {
+        handleAddStudent();
+      };
+
+      const handleEditProfile = (student) => {
+        setProfileStudent(student);
+      };
+
+      const handleCloseProfileModal = () => {
+        setProfileStudent(null);
+      };
+
+      const handleSaveProfile = () => {
+        handleAddStudent();
+      };
+
+      const viewGrades = async (student) => {
+        try {
+          const res = await fetch(`${apiBaseUrl}/grades?student_id=${student.id}`);
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          setGrades(data);
+          setPopupStudent(student);
+        } catch (err) {
+          console.error('Error fetching grades:', err);
+          alert('Failed to load grades: ' + err.message);
+        }
+      };
+
+      const closePopup = () => {
+        setPopupStudent(null);
+        setGrades([]);
+      };
+
+      const handleDeleteGrade = async (gradeId) => {
+        const res = await fetch(`${apiBaseUrl}/grades/${gradeId}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          setGrades(grades.filter(g => g.id !== gradeId));
+        }
+      };
+
+      return (
+        <div className="container mx-auto p-4">
+          <h2 className="text-2xl font-bold text-center mb-6">Student Management System</h2>
+          <StudentForm onAddStudent={handleAddStudent} />
+          <StudentList
+            students={students}
+            onDelete={handleDelete}
+            onOpenGradesModal={handleOpenGradesModal}
+            onViewGrades={viewGrades}
+            onEditProfile={handleEditProfile}
+          />
+          {modalStudentId && (
+            <GradesModal
+              studentId={modalStudentId}
+              mode={grades.length > 0 ? 'edit' : 'add'}
+              grades={grades}
+              onSave={handleSaveGrades}
+              onClose={handleCloseGradesModal}
+              onDeleteGrade={handleDeleteGrade}
+            />
+          )}
+          {profileStudent && (
+            <ProfileModal
+              student={profileStudent}
+              onSave={handleSaveProfile}
+              onClose={handleCloseProfileModal}
+            />
+          )}
+          {popupStudent && (
+            <GradesPopup
+              student={popupStudent}
+              grades={grades}
+              onClose={closePopup}
+            />
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
